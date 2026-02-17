@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ares.Toolkit.Serial", "Ares.Toolkit.Serial\Ares.Toolkit.Serial.csproj", "{4A25F02D-AFA9-C276-B089-16B7D6113B4D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ares.Toolkit.Serial.Tests", "Ares.Toolkit.Serial.Tests\Ares.Toolkit.Serial.Tests.csproj", "{225DB066-FD54-0AFD-124D-AC90EBD5320A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4A25F02D-AFA9-C276-B089-16B7D6113B4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A25F02D-AFA9-C276-B089-16B7D6113B4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A25F02D-AFA9-C276-B089-16B7D6113B4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A25F02D-AFA9-C276-B089-16B7D6113B4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{225DB066-FD54-0AFD-124D-AC90EBD5320A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{225DB066-FD54-0AFD-124D-AC90EBD5320A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{225DB066-FD54-0AFD-124D-AC90EBD5320A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{225DB066-FD54-0AFD-124D-AC90EBD5320A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

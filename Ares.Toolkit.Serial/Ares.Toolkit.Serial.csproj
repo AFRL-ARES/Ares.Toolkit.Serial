@@ -8,7 +8,7 @@
     <Authors>DCS</Authors>
     <Company>DCS</Company>
     <Product>Ares.Device.Serial</Product>
-    <PackageId>Ares.Device.Serial.dll</PackageId>
+    <PackageId>Ares.Toolkit.Serial</PackageId>
     <Description>
       Ares serial library which assists with Serial device connection IO stuff.
     </Description>

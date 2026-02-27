@@ -1,4 +1,4 @@
-﻿using Ares.Device.Serial.Commands;
+using Ares.Toolkit.Serial.Commands;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -13,7 +13,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Ares.Device.Serial;
+namespace Ares.Toolkit.Serial;
 
 public abstract class AresSerialConnection : IAresSerialConnection
 {
@@ -42,7 +42,7 @@ public abstract class AresSerialConnection : IAresSerialConnection
   protected internal AresSerialConnection(SerialPortConnectionInfo connectionInfo, string portName, SerialConnectionOptions? options = null)
   {
     _sendBuffer = options?.SendBuffer ?? TimeSpan.Zero;
-    _defaultTimeout = options?.SendTimeout ?? TimeSpan.FromDays(10);
+    _defaultTimeout = options?.SendTimeout ?? TimeSpan.FromSeconds(30);
     _staleBufferEntryDuration = options?.StaleBufferEntryDuration ?? TimeSpan.FromSeconds(10);
     _receiveMargin = options?.DataReceiveInterval ?? TimeSpan.FromMilliseconds(50);
     ConnectionInfo = connectionInfo;

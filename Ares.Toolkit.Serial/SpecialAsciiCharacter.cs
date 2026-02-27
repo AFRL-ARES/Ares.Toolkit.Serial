@@ -1,4 +1,4 @@
-﻿namespace Ares.Device.Serial
+namespace Ares.Toolkit.Serial
 {
   public enum SpecialAsciiCharacter
   {

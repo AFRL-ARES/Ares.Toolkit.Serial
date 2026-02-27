@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Linq;
 
-namespace Ares.Device.Serial.Commands;
+namespace Ares.Toolkit.Serial.Commands;
 
 public abstract class SerialResponseParser<T> : ISerialResponseParser where T : SerialResponse
 {

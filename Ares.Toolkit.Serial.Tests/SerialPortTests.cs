@@ -1,11 +1,11 @@
-﻿using System.IO.Ports;
+using System.IO.Ports;
 using System.Reactive.Linq;
 using System.Reactive.Threading.Tasks;
 using System.Text;
-using Ares.Device.Serial.Commands;
-using Ares.Device.Serial.Simulation;
+using Ares.Toolkit.Serial.Commands;
+using Ares.Toolkit.Serial.Simulation;
 
-namespace Ares.Device.Serial.Tests;
+namespace Ares.Toolkit.Serial.Tests;
 
 internal class SerialPortTests
 {

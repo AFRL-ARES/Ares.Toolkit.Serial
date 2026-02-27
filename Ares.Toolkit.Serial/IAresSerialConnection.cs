@@ -1,13 +1,12 @@
-﻿using Ares.Device.Serial.Commands;
+using Ares.Toolkit.Serial.Commands;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Ares.Device.Serial;
+namespace Ares.Toolkit.Serial;
 
 public interface IAresSerialConnection : IAresDeviceConnection
 {
-  void AttemptOpen();
   Task<T> Send<T>(SerialCommandWithResponse<T> command) where T : SerialResponse;
   Task<T> Send<T>(SerialCommandWithResponse<T> command, TimeSpan timeout) where T : SerialResponse;
   Task<T> Send<T>(SerialCommandWithResponse<T> command, TimeSpan timeout, CancellationToken token) where T : SerialResponse;
@@ -18,5 +17,4 @@ public interface IAresSerialConnection : IAresDeviceConnection
   Task<IObservable<T>> SendAndStream<T>(SerialCommandWithStreamedResponse<T> command, CancellationToken? token = null) where T : SerialResponse;
   IObservable<SerialTransaction<T>> GetTransactionStream<T>() where T : SerialResponse;
   Task Send(SerialCommand command);
-  void Close();
 }

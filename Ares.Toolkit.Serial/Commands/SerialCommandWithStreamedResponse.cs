@@ -1,4 +1,4 @@
-﻿namespace Ares.Device.Serial.Commands
+namespace Ares.Toolkit.Serial.Commands
 {
     public abstract class SerialCommandWithStreamedResponse<TCommandResponse> : SerialCommandWithResponse<TCommandResponse> where TCommandResponse : SerialResponse
     {

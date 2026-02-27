@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace Ares.Device.Serial.Commands;
+namespace Ares.Toolkit.Serial.Commands;
 
 internal interface ISerialResponseParser
 {

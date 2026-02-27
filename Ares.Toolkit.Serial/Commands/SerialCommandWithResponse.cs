@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace Ares.Device.Serial.Commands;
+namespace Ares.Toolkit.Serial.Commands;
 
 public abstract class SerialCommandWithResponse<T> : SerialCommand, ISerialCommandWithResponse where T : SerialResponse
 {

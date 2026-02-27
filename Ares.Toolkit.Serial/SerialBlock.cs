@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace Ares.Device.Serial
+namespace Ares.Toolkit.Serial
 {
   internal record SerialBlock(byte[] Data, DateTime Timestamp);
 }

@@ -1,6 +1,6 @@
-﻿using System.IO.Ports;
+using System.IO.Ports;
 
-namespace Ares.Device.Serial;
+namespace Ares.Toolkit.Serial;
 
 public class SerialPortConnectionInfo
 {

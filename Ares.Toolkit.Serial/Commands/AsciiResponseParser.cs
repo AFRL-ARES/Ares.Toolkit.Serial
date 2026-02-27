@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 
-namespace Ares.Device.Serial.Commands;
+namespace Ares.Toolkit.Serial.Commands;
 
 /// <summary>
 /// This is a special parser that treats byte data as readable ASCII characters in the range of

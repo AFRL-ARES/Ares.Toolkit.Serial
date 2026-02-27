@@ -1,12 +1,17 @@
-﻿using Ares.Device.Serial.Commands;
+using Ares.Toolkit.Serial.Commands;
 using System;
 using System.IO.Ports;
 
-namespace Ares.Device.Serial;
+namespace Ares.Toolkit.Serial;
 
 public class AresHardwareConnection : AresSerialConnection
 {
-  protected AresHardwareConnection(SerialPortConnectionInfo connectionInfo, 
+  public AresHardwareConnection(string portName, int baudRate = 9600, Parity parity = Parity.None, int dataBits = 8, StopBits stopBits = StopBits.One, SerialConnectionOptions? options = null)
+    : this(new SerialPortConnectionInfo(baudRate, parity, dataBits, stopBits), portName, options)
+  {
+  }
+
+  public AresHardwareConnection(SerialPortConnectionInfo connectionInfo, 
     string portName, 
     SerialConnectionOptions? connectionOptions = null) : base(connectionInfo, portName, connectionOptions)
   {

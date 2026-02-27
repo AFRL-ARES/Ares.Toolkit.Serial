@@ -1,4 +1,4 @@
-﻿namespace Ares.Device.Serial.Tests
+namespace Ares.Toolkit.Serial.Tests
 {
   internal class BufferTests
   {

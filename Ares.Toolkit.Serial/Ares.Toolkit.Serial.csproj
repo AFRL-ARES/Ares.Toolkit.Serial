@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <Authors>DCS</Authors>
     <Company>DCS</Company>
-    <Product>Ares.Device.Serial</Product>
+    <Product>Ares.Toolkit.Serial</Product>
     <PackageId>Ares.Toolkit.Serial</PackageId>
     <Description>
       Ares serial library which assists with Serial device connection IO stuff.

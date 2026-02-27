@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
-namespace Ares.Device.Serial
+namespace Ares.Toolkit.Serial
 {
   internal static class BufferExtensions
   {

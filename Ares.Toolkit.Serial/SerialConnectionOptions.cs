@@ -1,12 +1,12 @@
-﻿using Ares.Device.Serial.Commands;
+using Ares.Toolkit.Serial.Commands;
 using System;
 
-namespace Ares.Device.Serial;
+namespace Ares.Toolkit.Serial;
 public record SerialConnectionOptions
 {
   /// <summary>
   /// The default timeout for receiving a response for a <see cref="ISerialCommandWithResponse"/>
-  /// Default 10 days
+  /// Default 30 seconds
   /// </summary>
   public TimeSpan? SendTimeout { get; set; }
 

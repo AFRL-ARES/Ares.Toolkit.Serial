@@ -1,6 +1,6 @@
-﻿using Ares.Device.Serial.Commands;
+using Ares.Toolkit.Serial.Commands;
 
-namespace Ares.Device.Serial.Simulation;
+namespace Ares.Toolkit.Serial.Simulation;
 
 public abstract class AresSerialSimConnection : AresSerialConnection
 {

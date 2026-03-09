@@ -4,13 +4,7 @@ namespace Ares.Toolkit.Serial;
 
 public class SerialPortConnectionInfo
 {
-  public SerialPortConnectionInfo
-    (
-    int baudRate,
-    Parity parity,
-    int dataBits,
-    StopBits stopBits
-    )
+  public SerialPortConnectionInfo(int baudRate, Parity parity, int dataBits,StopBits stopBits)
   {
     BaudRate = baudRate;
     Parity = parity;

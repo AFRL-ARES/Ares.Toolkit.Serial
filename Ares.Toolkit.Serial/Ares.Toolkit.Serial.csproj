@@ -9,12 +9,15 @@
     <Company>DCS</Company>
     <Product>Ares.Toolkit.Serial</Product>
     <PackageId>Ares.Toolkit.Serial</PackageId>
-    <Description>
-      Ares serial library which assists with Serial device connection IO stuff.
+    <Description>Ares serial library which assists with Serial device connection IO stuff.
     </Description>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 	<AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
 	<Nullable>enable</Nullable>
+	<Title>ARES Serial Toolkit</Title>
+	<Version>$(Version)</Version>
+	<PackageLicenseFile>LICENSE</PackageLicenseFile>
+	<PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +31,17 @@
     <DefineConstants>DEBUG;TRACE;SIM</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
   
 	<ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.3" />

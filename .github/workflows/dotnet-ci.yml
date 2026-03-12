@@ -1,0 +1,21 @@
+on:
+  push:
+    branches:
+      - Develop
+  pull_request:
+    branches:
+      - Develop
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Build
+        run: dotnet build --configuration Release
+        working-directory: dotnet
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+        working-directory: dotnet

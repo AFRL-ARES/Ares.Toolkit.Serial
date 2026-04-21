@@ -25,4 +25,4 @@ jobs:
           --skip-duplicate
         working-directory: Ares.Toolkit.Serial
         env:
-          NUGET_TOKEN: ${{ secrets.NUGET_API_KEY }}
+          NUGET_TOKEN: ${{ secrets.NUGET_TOKEN }}

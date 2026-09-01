@@ -27,6 +27,9 @@ internal sealed class SharedSerialPort : IDisposable
     // Instance state
     // ==========================================================
 
+
+    public event Action<byte[]>? DataReceived;
+
     private readonly object _stateLock = new();
 
     private readonly HashSet<AresHardwareConnection> _connections = [];
@@ -287,6 +290,7 @@ internal sealed class SharedSerialPort : IDisposable
 
             if (_systemPort.IsOpen) _systemPort.Close();
 
+            _systemPort.DataReceived -= ProcessReceivedData;
             _systemPort.Dispose();
             _systemPort = null;
         }
@@ -342,18 +346,53 @@ internal sealed class SharedSerialPort : IDisposable
 
     private SerialPort CreateSystemPort()
     {
-        return new SerialPort(
+        var port = new SerialPort(
             PortName,
             ConnectionInfo.BaudRate,
             ConnectionInfo.Parity,
             ConnectionInfo.DataBits,
-            ConnectionInfo.StopBits);
+            ConnectionInfo.StopBits
+        );
+
+        port.DataReceived += ProcessReceivedData;
+
+        return port;
     }
 
 
     // ==========================================================
     // Physical I/O
     // ==========================================================
+
+    private void ProcessReceivedData(object sender, SerialDataReceivedEventArgs e)
+    {
+        if (sender is not SerialPort port)
+            return;
+
+        var buffer = new byte[port.BytesToRead];
+
+        if (buffer.Length == 0)
+            return;
+
+        var bytesRead = port.Read(
+            buffer,
+            0,
+            buffer.Length
+        );
+
+        if (bytesRead == 0)
+            return;
+
+        if (bytesRead != buffer.Length)
+        {
+            Array.Resize(
+                ref buffer,
+                bytesRead
+            );
+        }
+
+        DataReceived?.Invoke(buffer);
+    }
 
     public void Write(byte[] data, int offset, int count)
     {

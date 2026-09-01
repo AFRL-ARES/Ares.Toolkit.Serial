@@ -29,8 +29,8 @@ public abstract class AresSerialConnection : IAresSerialConnection
   private readonly Task _bufferProcessor;
   private readonly TimeSpan _defaultTimeout;
   private readonly TimeSpan _staleBufferEntryDuration;
-  private readonly SemaphoreSlim _sendLock = new(1);
-  private readonly IList<ISerialCommandWithResponse> _singleResponseQueue = [];
+    private readonly SemaphoreSlim _sendLock = new(1);
+    private readonly IList<ISerialCommandWithResponse> _singleResponseQueue = [];
 
   private int _pressure = 0;
 
@@ -61,7 +61,18 @@ public abstract class AresSerialConnection : IAresSerialConnection
     Listen();
   }
 
-  public async Task<T> Send<T>(SerialCommandWithResponse<T> command, TimeSpan timeout, CancellationToken token, Func<T, bool>? filter) where T : SerialResponse
+    protected virtual Task AcquireStreamLock(
+    CancellationToken token = default)
+    {
+        return _sendLock.WaitAsync(token);
+    }
+
+    protected virtual void ReleaseStreamLock()
+    {
+        _sendLock.Release();
+    }
+
+    public async Task<T> Send<T>(SerialCommandWithResponse<T> command, TimeSpan timeout, CancellationToken token, Func<T, bool>? filter) where T : SerialResponse
   {
     if(command is SerialCommandWithStreamedResponse<T>)
       throw new InvalidOperationException(
@@ -76,8 +87,8 @@ public abstract class AresSerialConnection : IAresSerialConnection
         .Timeout(timeout)
         //.Catch<T?, TimeoutException>(_ => Observable.Return<T?>(null))
         .ToTask(token);
-    await _sendLock.WaitAsync(token);
-    lock(_singleResponseQueue)
+        await AcquireStreamLock(token);
+        lock (_singleResponseQueue)
     {
       _singleResponseQueue.Add(command);
     }
@@ -108,7 +119,7 @@ public abstract class AresSerialConnection : IAresSerialConnection
         _singleResponseQueue.Remove(command);
       }
 
-      _sendLock.Release();
+      ReleaseStreamLock();
     }
     Interlocked.Decrement(ref _pressure);
     return response ?? throw new TimeoutException($"Receiving message of type {typeof(T).Name} timed out");
@@ -191,7 +202,7 @@ public abstract class AresSerialConnection : IAresSerialConnection
       });
     });
 
-    await _sendLock.WaitAsync(ct);
+    await AcquireStreamLock(ct);
     try
     {
       SendOutboundMessage(command);
@@ -200,7 +211,7 @@ public abstract class AresSerialConnection : IAresSerialConnection
     }
     finally
     {
-      _sendLock.Release();
+      ReleaseStreamLock();
     }
 
     return observable;
@@ -219,7 +230,7 @@ public abstract class AresSerialConnection : IAresSerialConnection
 
   public async Task Send(SerialCommand command)
   {
-    await _sendLock.WaitAsync();
+    await AcquireStreamLock();
     try
     {
       SendOutboundMessage(command);
@@ -228,7 +239,7 @@ public abstract class AresSerialConnection : IAresSerialConnection
     }
     finally
     {
-      _sendLock.Release();
+      ReleaseStreamLock();
     }
   }
 

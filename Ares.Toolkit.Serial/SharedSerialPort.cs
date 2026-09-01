@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO.Ports;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Ares.Toolkit.Serial;
 
@@ -89,6 +91,21 @@ internal sealed class SharedSerialPort : IDisposable
                 return _connections.Count;
             }
         }
+    }
+
+    private readonly SemaphoreSlim _streamLock = new(1, 1);
+
+    internal Task AcquireStreamLock(
+    CancellationToken token = default)
+    {
+        ThrowIfDisposed();
+
+        return _streamLock.WaitAsync(token);
+    }
+
+    internal void ReleaseStreamLock()
+    {
+        _streamLock.Release();
     }
 
 

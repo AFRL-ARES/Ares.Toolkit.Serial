@@ -1,6 +1,8 @@
 using Ares.Toolkit.Serial.Commands;
 using System;
 using System.IO.Ports;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Ares.Toolkit.Serial;
 
@@ -20,6 +22,29 @@ public class AresHardwareConnection : AresSerialConnection
 
     //private SerialPort? SystemPort { get; set; }
     private SharedSerialPort? SharedPort { get; set; }
+
+    protected override Task AcquireStreamLock(
+    CancellationToken token = default)
+    {
+        if (SharedPort is null)
+        {
+            throw new InvalidOperationException(
+                "Cannot acquire stream lock without an open shared serial port.");
+        }
+
+        return SharedPort.AcquireStreamLock(token);
+    }
+
+    protected override void ReleaseStreamLock()
+    {
+        if (SharedPort is null)
+        {
+            throw new InvalidOperationException(
+                "Cannot release stream lock without an open shared serial port.");
+        }
+
+        SharedPort.ReleaseStreamLock();
+    }
 
     protected override void Open(string portName)
     {

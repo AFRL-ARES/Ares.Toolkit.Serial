@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO.Ports;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -369,7 +370,12 @@ internal sealed class SharedSerialPort : IDisposable
             ConnectionInfo.Parity,
             ConnectionInfo.DataBits,
             ConnectionInfo.StopBits
-        );
+        )
+        {
+            DtrEnable = true,
+            RtsEnable = true
+        };
+
 
         port.DataReceived += ProcessReceivedData;
 

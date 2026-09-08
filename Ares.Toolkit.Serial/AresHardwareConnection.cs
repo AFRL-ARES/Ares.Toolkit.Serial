@@ -83,8 +83,8 @@ public class AresHardwareConnection : AresSerialConnection
   {
     if (SharedPort is null)
       throw new InvalidOperationException("Cannot listen on the hardware connection without first creating a port.");
-
-    SharedPort.DataReceived += ProcessReceivedData;
+        SharedPort.DataReceived -= ProcessReceivedData;
+        SharedPort.DataReceived += ProcessReceivedData;
   }
 
   protected override void StopListening()

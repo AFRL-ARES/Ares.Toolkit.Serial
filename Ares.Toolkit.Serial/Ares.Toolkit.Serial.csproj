@@ -18,6 +18,7 @@
 	<Version>$(Version)</Version>
 	<PackageLicenseFile>LICENSE</PackageLicenseFile>
 	<PackageReadmeFile>README.md</PackageReadmeFile>
+	<AssemblyVersion></AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

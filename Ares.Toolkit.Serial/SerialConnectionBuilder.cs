@@ -13,6 +13,7 @@ public class SerialConnectionBuilder
   private Parity _parity = Parity.None;
   private int _dataBits = 8;
   private StopBits _stopBits = StopBits.One;
+  private String _protocol = SerialDeviceProtocols.Dedicated;
   private readonly SerialConnectionOptions _options = new();
 
   public SerialConnectionBuilder WithPort(string portName)
@@ -51,9 +52,15 @@ public class SerialConnectionBuilder
     return this;
   }
 
+  public SerialConnectionBuilder WithProtocol(string protocol)
+  {
+    _protocol = protocol;
+    return this;
+  }
+
   public IAresSerialConnection Build()
   {
-    var info = new SerialPortConnectionInfo(_baudRate, _parity, _dataBits, _stopBits);
+    var info = new SerialPortConnectionInfo(_baudRate, _parity, _dataBits, _stopBits, _protocol);
     return new AresHardwareConnection(info, _portName, _options);
   }
 }

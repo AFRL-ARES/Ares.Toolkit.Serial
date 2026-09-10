@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO.Ports;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,472 +16,361 @@ namespace Ares.Toolkit.Serial;
 /// </summary>
 internal sealed class SharedSerialPort : IDisposable
 {
-    // ==========================================================
-    // Static registry
-    // ==========================================================
+  private static readonly Dictionary<string, SharedSerialPort> Ports = new(StringComparer.OrdinalIgnoreCase);
+  private static readonly object PortsLock = new();
+  public event Action<byte[]>? DataReceived;
+  private readonly object _stateLock = new();
+  private readonly HashSet<AresHardwareConnection> _connections = [];
+  private SerialPort? _systemPort;
+  private bool _disposed;
+  private readonly SemaphoreSlim _streamLock = new(1, 1);
 
-    private static readonly Dictionary<string, SharedSerialPort> Ports =
-        new(StringComparer.OrdinalIgnoreCase);
+  private SharedSerialPort(string portName, SerialPortConnectionInfo connectionInfo)
+  {
+    PortName = portName;
+    ConnectionInfo = connectionInfo;
+    Open();
+  }
 
-    private static readonly object PortsLock = new();
+  internal Task AcquireStreamLock(CancellationToken token = default)
+  {
+    ThrowIfDisposed();
+    return _streamLock.WaitAsync(token);
+  }
 
-    // ==========================================================
-    // Instance state
-    // ==========================================================
+  internal void ReleaseStreamLock()
+  {
+    _streamLock.Release();
+  }
 
+  /// <summary>
+  /// Acquires a shared physical serial port for a hardware connection.
+  ///
+  /// If the port does not currently exist, it is created and opened.
+  /// If it already exists, the requested connection must be compatible
+  /// with the existing bus.
+  /// </summary>
+  public static SharedSerialPort Acquire(AresHardwareConnection connection, string portName, SerialPortConnectionInfo connectionInfo)
+  {
+    ArgumentNullException.ThrowIfNull(connection);
+    ArgumentException.ThrowIfNullOrWhiteSpace(portName);
+    ArgumentNullException.ThrowIfNull(connectionInfo);
 
-    public event Action<byte[]>? DataReceived;
-
-    private readonly object _stateLock = new();
-
-    private readonly HashSet<AresHardwareConnection> _connections = [];
-
-    private SerialPort? _systemPort;
-
-    private bool _disposed;
-
-
-    // ==========================================================
-    // Construction
-    // ==========================================================
-
-    private SharedSerialPort(string portName, SerialPortConnectionInfo connectionInfo)
+    lock(PortsLock)
     {
-        PortName = portName;
+      if(Ports.TryGetValue(portName, out var existing))
+      {
+        existing.AddConnection(connection, connectionInfo);
+        return existing;
+      }
 
-        ConnectionInfo = new SerialPortConnectionInfo(
-            connectionInfo.BaudRate,
-            connectionInfo.Parity,
-            connectionInfo.DataBits,
-            connectionInfo.StopBits,
-            connectionInfo.Protocol)
-        {
-            EndOfInput = connectionInfo.EndOfInput
-        };
+      var sharedPort = new SharedSerialPort(portName, connectionInfo);
+      sharedPort.AddConnection(connection, connectionInfo);
+      Ports.Add(portName, sharedPort);
 
-        Open();
+      return sharedPort;
+    }
+  }
+
+  private void AddConnection(AresHardwareConnection connection, SerialPortConnectionInfo requestedInfo)
+  {
+    lock(_stateLock)
+    {
+      ThrowIfDisposed();
+
+      if(_connections.Contains(connection))
+          return;
+
+      ValidateCompatibility(requestedInfo);
+
+      _connections.Add(connection);
+    }
+  }
+
+  /// <summary>
+  /// Releases this physical serial port from a hardware connection.
+  ///
+  /// When the final hardware connection is removed, the physical
+  /// port is closed, disposed, and removed from the registry.
+  /// </summary>
+  public void Release(AresHardwareConnection connection)
+  {
+    ArgumentNullException.ThrowIfNull(connection);
+
+    lock(PortsLock)
+    {
+      bool shouldDispose;
+
+      lock (_stateLock)
+      {
+          if (_disposed)
+              return;
+
+          _connections.Remove(connection);
+
+          shouldDispose =
+              _connections.Count == 0;
+      }
+
+      if (!shouldDispose)
+          return;
+
+      Ports.Remove(PortName);
+
+      DisposeCore();
+    }
+  }
+
+  private bool IsDedicatedProtocol(string protocol) => string.Equals(protocol, SerialDeviceProtocols.Dedicated, StringComparison.OrdinalIgnoreCase);
+
+  private bool CompareProtocols(string protocol1, string protocol2) => string.Equals(protocol1, protocol2, StringComparison.OrdinalIgnoreCase);
+
+  private void ValidateCompatibility(SerialPortConnectionInfo requested)
+  {
+    //A dedicated protocol implies that the port may not be shared.
+    if(_connections.Count > 0 && IsDedicatedProtocol(ConnectionInfo.Protocol))
+      throw new InvalidOperationException($"Serial port '{PortName}' is configured as a dedicated connection and cannot be shared.");
+
+
+    if(!CompareProtocols(ConnectionInfo.Protocol, requested.Protocol))
+    {
+      throw new InvalidOperationException(
+        $"Serial port '{PortName}' is already using protocol " +
+        $"'{ConnectionInfo.Protocol}', but the requested device " +
+        $"uses protocol '{requested.Protocol}'.");
     }
 
 
-    // ==========================================================
-    // Properties
-    // ==========================================================
-
-    public string PortName { get; }
-
-    public SerialPortConnectionInfo ConnectionInfo { get; }
-
-    public bool IsOpen
+    if(ConnectionInfo.BaudRate != requested.BaudRate)
     {
-        get
-        {
-            lock (_stateLock)
-            {
-                return _systemPort?.IsOpen ?? false;
-            }
-        }
-    }
-
-    public int ConnectionCount
-    {
-        get
-        {
-            lock (_stateLock)
-            {
-                return _connections.Count;
-            }
-        }
-    }
-
-    private readonly SemaphoreSlim _streamLock = new(1, 1);
-
-    internal Task AcquireStreamLock(
-    CancellationToken token = default)
-    {
-        ThrowIfDisposed();
-
-        return _streamLock.WaitAsync(token);
-    }
-
-    internal void ReleaseStreamLock()
-    {
-        _streamLock.Release();
+      throw new InvalidOperationException(
+        $"Serial port '{PortName}' is already configured for " +
+        $"{ConnectionInfo.BaudRate} baud, but the requested " +
+        $"device requires {requested.BaudRate} baud.");
     }
 
 
-    // ==========================================================
-    // Acquire
-    // ==========================================================
-
-    /// <summary>
-    /// Acquires a shared physical serial port for a hardware connection.
-    ///
-    /// If the port does not currently exist, it is created and opened.
-    /// If it already exists, the requested connection must be compatible
-    /// with the existing bus.
-    /// </summary>
-    public static SharedSerialPort Acquire(AresHardwareConnection connection, string portName, SerialPortConnectionInfo connectionInfo)
+    if(ConnectionInfo.Parity != requested.Parity)
     {
-        ArgumentNullException.ThrowIfNull(connection);
-        ArgumentException.ThrowIfNullOrWhiteSpace(portName);
-        ArgumentNullException.ThrowIfNull(connectionInfo);
-
-        lock (PortsLock)
-        {
-            if (Ports.TryGetValue(portName, out var existing))
-            {
-                existing.AddConnection(
-                    connection,
-                    connectionInfo);
-
-                return existing;
-            }
-
-            var sharedPort = new SharedSerialPort(portName, connectionInfo);
-
-            sharedPort.AddConnection(connection, connectionInfo);
-
-            Ports.Add(portName, sharedPort);
-
-            return sharedPort;
-        }
+      throw new InvalidOperationException(
+        $"Serial port '{PortName}' is already configured with " +
+        $"parity '{ConnectionInfo.Parity}', but the requested " +
+        $"device requires '{requested.Parity}'.");
     }
 
 
-    // ==========================================================
-    // Connection management
-    // ==========================================================
-
-    private void AddConnection(AresHardwareConnection connection, SerialPortConnectionInfo requestedInfo)
+    if(ConnectionInfo.DataBits != requested.DataBits)
     {
-        lock (_stateLock)
-        {
-            ThrowIfDisposed();
-
-            if (_connections.Contains(connection))
-                return;
-
-            ValidateCompatibility(requestedInfo);
-
-            _connections.Add(connection);
-        }
+      throw new InvalidOperationException(
+        $"Serial port '{PortName}' is already configured for " +
+        $"{ConnectionInfo.DataBits} data bits, but the requested " +
+        $"device requires {requested.DataBits}.");
     }
 
 
-    /// <summary>
-    /// Releases this physical serial port from a hardware connection.
-    ///
-    /// When the final hardware connection is removed, the physical
-    /// port is closed, disposed, and removed from the registry.
-    /// </summary>
-    public void Release(AresHardwareConnection connection)
+    if(ConnectionInfo.StopBits != requested.StopBits)
     {
-        ArgumentNullException.ThrowIfNull(connection);
-
-        lock (PortsLock)
-        {
-            bool shouldDispose;
-
-            lock (_stateLock)
-            {
-                if (_disposed)
-                    return;
-
-                _connections.Remove(connection);
-
-                shouldDispose =
-                    _connections.Count == 0;
-            }
-
-            if (!shouldDispose)
-                return;
-
-            Ports.Remove(PortName);
-
-            DisposeCore();
-        }
+      throw new InvalidOperationException(
+        $"Serial port '{PortName}' is already configured for " +
+        $"stop bits '{ConnectionInfo.StopBits}', but the requested " +
+        $"device requires '{requested.StopBits}'.");
     }
+  }
 
-
-    // ==========================================================
-    // Compatibility
-    // ==========================================================
-
-    private void ValidateCompatibility(SerialPortConnectionInfo requested)
+  public void Open()
+  {
+    lock (_stateLock)
     {
-        // Dedicated means exactly that:
-        // the port may not be shared.
-        if (_connections.Count > 0 &&
-            (
-                string.Equals(
-                    ConnectionInfo.Protocol,
-                    SerialDeviceProtocols.Dedicated,
-                    StringComparison.OrdinalIgnoreCase)
-            ))
-        {
-            throw new InvalidOperationException(
-                $"Serial port '{PortName}' is configured as a " +
-                $"dedicated connection and cannot be shared.");
-        }
+      ThrowIfDisposed();
 
+      if(_systemPort?.IsOpen == true)
+        return;
 
-        if (!string.Equals(
-                ConnectionInfo.Protocol,
-                requested.Protocol,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                $"Serial port '{PortName}' is already using protocol " +
-                $"'{ConnectionInfo.Protocol}', but the requested device " +
-                $"uses protocol '{requested.Protocol}'.");
-        }
+      if(_systemPort is null)
+        _systemPort = CreateSystemPort();
 
-
-        if (ConnectionInfo.BaudRate != requested.BaudRate)
-        {
-            throw new InvalidOperationException(
-                $"Serial port '{PortName}' is already configured for " +
-                $"{ConnectionInfo.BaudRate} baud, but the requested " +
-                $"device requires {requested.BaudRate} baud.");
-        }
-
-
-        if (ConnectionInfo.Parity != requested.Parity)
-        {
-            throw new InvalidOperationException(
-                $"Serial port '{PortName}' is already configured with " +
-                $"parity '{ConnectionInfo.Parity}', but the requested " +
-                $"device requires '{requested.Parity}'.");
-        }
-
-
-        if (ConnectionInfo.DataBits != requested.DataBits)
-        {
-            throw new InvalidOperationException(
-                $"Serial port '{PortName}' is already configured for " +
-                $"{ConnectionInfo.DataBits} data bits, but the requested " +
-                $"device requires {requested.DataBits}.");
-        }
-
-
-        if (ConnectionInfo.StopBits != requested.StopBits)
-        {
-            throw new InvalidOperationException(
-                $"Serial port '{PortName}' is already configured for " +
-                $"stop bits '{ConnectionInfo.StopBits}', but the requested " +
-                $"device requires '{requested.StopBits}'.");
-        }
+      _systemPort.Open();
     }
+  }
 
 
-    // ==========================================================
-    // Physical port lifecycle
-    // ==========================================================
-
-    public void Open()
+  public void Close()
+  {
+    lock (_stateLock)
     {
-        lock (_stateLock)
-        {
-            ThrowIfDisposed();
+      ThrowIfDisposed();
 
-            if (_systemPort?.IsOpen == true)
-                return;
+      if(_systemPort is null) 
+        return;
 
-            if (_systemPort is null)
-            {
-                _systemPort = CreateSystemPort();
-            }
+      if(_systemPort.IsOpen) 
+        _systemPort.Close();
 
-            _systemPort.Open();
-        }
+      _systemPort.DataReceived -= ProcessReceivedData;
+      _systemPort.Dispose();
+      _systemPort = null;
     }
+  }
 
 
-    public void Close()
+  /// <summary>
+  /// Ensures that the physical serial port is open.
+  /// If it has previously been closed, it is reopened.
+  /// </summary>
+  public void EnsureOpen()
+  {
+    lock (_stateLock)
     {
-        lock (_stateLock)
-        {
-            ThrowIfDisposed();
+      ThrowIfDisposed();
 
-            if (_systemPort is null) return;
+      if(_systemPort?.IsOpen == true)
+        return;
 
-            if (_systemPort.IsOpen) _systemPort.Close();
+      if(_systemPort is null)
+        _systemPort = CreateSystemPort();
 
-            _systemPort.DataReceived -= ProcessReceivedData;
-            _systemPort.Dispose();
-            _systemPort = null;
-        }
+      _systemPort.Open();
     }
+  }
 
 
-    /// <summary>
-    /// Ensures that the physical serial port is open.
-    /// If it has previously been closed, it is reopened.
-    /// </summary>
-    public void EnsureOpen()
+  /// <summary>
+  /// Explicitly closes and reopens the underlying serial port.
+  /// </summary>
+  public void Reopen()
+  {
+    lock (_stateLock)
     {
-        lock (_stateLock)
-        {
-            ThrowIfDisposed();
+      ThrowIfDisposed();
 
-            if (_systemPort?.IsOpen == true)
-                return;
+      if(_systemPort is not null)
+      {
+        if(_systemPort.IsOpen)
+          _systemPort.Close();
 
-            if (_systemPort is null)
-            {
-                _systemPort = CreateSystemPort();
-            }
+        _systemPort.Dispose();
+      }
 
-            _systemPort.Open();
-        }
+      _systemPort = CreateSystemPort();
+
+      _systemPort.Open();
     }
+  }
 
 
-    /// <summary>
-    /// Explicitly closes and reopens the underlying serial port.
-    /// </summary>
-    public void Reopen()
+  private SerialPort CreateSystemPort()
+  {
+    var port = new SerialPort(
+        PortName,
+        ConnectionInfo.BaudRate,
+        ConnectionInfo.Parity,
+        ConnectionInfo.DataBits,
+        ConnectionInfo.StopBits
+    )
     {
-        lock (_stateLock)
-        {
-            ThrowIfDisposed();
-
-            if (_systemPort is not null)
-            {
-                if (_systemPort.IsOpen)
-                    _systemPort.Close();
-
-                _systemPort.Dispose();
-            }
-
-            _systemPort = CreateSystemPort();
-
-            _systemPort.Open();
-        }
-    }
+        DtrEnable = true,
+        RtsEnable = true
+    };
 
 
-    private SerialPort CreateSystemPort()
+    port.DataReceived += ProcessReceivedData;
+
+    return port;
+  }
+
+  private void ProcessReceivedData(object sender, SerialDataReceivedEventArgs e)
+  {
+    if(sender is not SerialPort port)
+      return;
+
+    var buffer = new byte[port.BytesToRead];
+
+    if(buffer.Length == 0)
+      return;
+
+    var bytesRead = port.Read(buffer, 0, buffer.Length);
+
+    if(bytesRead == 0)
+      return;
+
+    if(bytesRead != buffer.Length)
+      Array.Resize(ref buffer, bytesRead);
+
+    DataReceived?.Invoke(buffer);
+  }
+
+  public void Write(byte[] data, int offset, int count)
+  {
+    ArgumentNullException.ThrowIfNull(data);
+
+    lock(_stateLock)
     {
-        var port = new SerialPort(
-            PortName,
-            ConnectionInfo.BaudRate,
-            ConnectionInfo.Parity,
-            ConnectionInfo.DataBits,
-            ConnectionInfo.StopBits
-        )
-        {
-            DtrEnable = true,
-            RtsEnable = true
-        };
+      ThrowIfDisposed();
 
-
-        port.DataReceived += ProcessReceivedData;
-
-        return port;
+      if(_systemPort is null || !_systemPort.IsOpen)
+        throw new InvalidOperationException($"Cannot write to serial port '{PortName}' because it is not open.");
+      
+      _systemPort.Write(data, offset, count);
     }
+  }
 
-
-    // ==========================================================
-    // Physical I/O
-    // ==========================================================
-
-    private void ProcessReceivedData(object sender, SerialDataReceivedEventArgs e)
+  public void Dispose()
+  {
+    lock (PortsLock)
     {
-        if (sender is not SerialPort port)
-            return;
-
-        var buffer = new byte[port.BytesToRead];
-
-        if (buffer.Length == 0)
-            return;
-
-        var bytesRead = port.Read(
-            buffer,
-            0,
-            buffer.Length
-        );
-
-        if (bytesRead == 0)
-            return;
-
-        if (bytesRead != buffer.Length)
-        {
-            Array.Resize(
-                ref buffer,
-                bytesRead
-            );
-        }
-
-        DataReceived?.Invoke(buffer);
+      Ports.Remove(PortName);
+      DisposeCore();
     }
+  }
 
-    public void Write(byte[] data, int offset, int count)
+  private void DisposeCore()
+  {
+    lock (_stateLock)
     {
-        ArgumentNullException.ThrowIfNull(data);
+      if(_disposed)
+        return;
 
-        lock (_stateLock)
-        {
-            ThrowIfDisposed();
+      _disposed = true;
 
-            if (_systemPort is null ||
-                !_systemPort.IsOpen)
-            {
-                throw new InvalidOperationException(
-                    $"Cannot write to serial port '{PortName}' " +
-                    "because it is not open.");
-            }
+      _connections.Clear();
 
-            _systemPort.Write(
-                data,
-                offset,
-                count);
-        }
+      if(_systemPort is not null)
+      {
+        if(_systemPort.IsOpen)
+          _systemPort.Close();
+
+        _systemPort.Dispose();
+        _systemPort = null;
+      }
     }
+  }
 
+  private void ThrowIfDisposed() 
+    => ObjectDisposedException.ThrowIf(_disposed, this);
 
-    // ==========================================================
-    // Disposal
-    // ==========================================================
+  public string PortName { get; }
 
-    public void Dispose()
+  public SerialPortConnectionInfo ConnectionInfo { get; }
+
+  public bool IsOpen
+  {
+    get
     {
-        lock (PortsLock)
-        {
-            Ports.Remove(PortName);
-
-            DisposeCore();
-        }
+      lock(_stateLock)
+      {
+        return _systemPort?.IsOpen ?? false;
+      }
     }
+  }
 
-
-    private void DisposeCore()
+  public int ConnectionCount
+  {
+    get
     {
-        lock (_stateLock)
-        {
-            if (_disposed)
-                return;
-
-            _disposed = true;
-
-            _connections.Clear();
-
-            if (_systemPort is not null)
-            {
-                if (_systemPort.IsOpen)
-                    _systemPort.Close();
-
-                _systemPort.Dispose();
-                _systemPort = null;
-            }
-        }
+      lock(_stateLock)
+      {
+        return _connections.Count;
+      }
     }
-
-
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(
-            _disposed,
-            this);
-    }
+  }
 }

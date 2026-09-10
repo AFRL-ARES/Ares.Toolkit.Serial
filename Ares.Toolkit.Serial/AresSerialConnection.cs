@@ -8,7 +8,6 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Reactive.Threading.Tasks;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,9 +28,8 @@ public abstract class AresSerialConnection : IAresSerialConnection
   private readonly Task _bufferProcessor;
   private readonly TimeSpan _defaultTimeout;
   private readonly TimeSpan _staleBufferEntryDuration;
-    private readonly SemaphoreSlim _sendLock = new(1);
-    private readonly IList<ISerialCommandWithResponse> _singleResponseQueue = [];
-
+  private readonly SemaphoreSlim _sendLock = new(1);
+  private readonly IList<ISerialCommandWithResponse> _singleResponseQueue = [];
   private int _pressure = 0;
 
   /// <summary>
@@ -57,79 +55,71 @@ public abstract class AresSerialConnection : IAresSerialConnection
     Open(Name);
     if(!IsOpen)
       throw new InvalidOperationException($"Successfully executed Open on {Name}, but did not report IsOpen");
-        
-    // Shared port devices should not listen all the time, so we need to start listening before sending the command
-        //Listen();
-    }
+       
+  }
 
-    protected virtual Task AcquireStreamLock(
-    CancellationToken token = default)
+  protected virtual Task AcquireStreamLock(CancellationToken token = default) 
+    => _sendLock.WaitAsync(token);
+
+  protected virtual void ReleaseStreamLock() 
+    => _sendLock.Release();
+    
+
+  public async Task<T> Send<T>(SerialCommandWithResponse<T> command, TimeSpan timeout, CancellationToken token, Func<T, bool>? filter) where T : SerialResponse
+  {
+    if(command is SerialCommandWithStreamedResponse<T>)
+      throw new InvalidOperationException("Attempted to send a command for a streamed response. Call Send instead");
+
+    Interlocked.Increment(ref _pressure);
+    var getResponseTask =
+      GetTransactionStream<T>()
+        .Where(transaction => filter?.Invoke(transaction.Response) ?? transaction.Request == command)
+        .Take(1)
+        .Select(transaction => transaction.Response)
+        .Timeout(timeout)
+        .ToTask(token);
+
+    await AcquireStreamLock(token);
+    Listen();
+
+    lock (_singleResponseQueue)
     {
-        return _sendLock.WaitAsync(token);
+      _singleResponseQueue.Add(command);
     }
+      
+    T? response = null;
 
-    protected virtual void ReleaseStreamLock()
+    try
     {
-        _sendLock.Release();
+      SendOutboundMessage(command);
+      response = await getResponseTask;
+      if(_sendBuffer > TimeSpan.Zero)
+        await Task.Delay(_sendBuffer);
     }
 
-    public async Task<T> Send<T>(SerialCommandWithResponse<T> command, TimeSpan timeout, CancellationToken token, Func<T, bool>? filter) where T : SerialResponse
+    catch(TimeoutException)
     {
-        if (command is SerialCommandWithStreamedResponse<T>)
-            throw new InvalidOperationException(
-              "Attempted to send a command for a streamed response. Call Send instead");
+      await Task.Delay(_receiveMargin);
 
-        Interlocked.Increment(ref _pressure);
-        var getResponseTask =
-          GetTransactionStream<T>()
-            .Where(transaction => filter?.Invoke(transaction.Response) ?? transaction.Request == command)
-            .Take(1)
-            .Select(transaction => transaction.Response)
-            .Timeout(timeout)
-            //.Catch<T?, TimeoutException>(_ => Observable.Return<T?>(null))
-            .ToTask(token);
-        await AcquireStreamLock(token);
-        // with shared port devices should not listen all the time, so we need to start listening before sending the command
-        Listen();
-        lock (_singleResponseQueue)
-        {
-            _singleResponseQueue.Add(command);
-        }
-        T? response = null;
-
-        try
-        {
-            SendOutboundMessage(command);
-            response = await getResponseTask;
-            if (_sendBuffer > TimeSpan.Zero)
-                await Task.Delay(_sendBuffer);
-        }
-        catch (TimeoutException)
-        {
-            await Task.Delay(_receiveMargin);
-
-            // Wait until the device finishes sending data
-            // We check how much time has passed since the last AddDataReceived call
-            while (_lastReceived.Elapsed < _receiveMargin)
-            {
-                await Task.Delay(_receiveMargin);
-            }
-        }
-        finally
-        {
-            lock (_singleResponseQueue)
-            {
-                _singleResponseQueue.Remove(command);
-            }
-            /// shared devices should not listen all the time, so we need to stop listening after sending the command
-            StopListening();
-            ReleaseStreamLock();
-        }
-        Interlocked.Decrement(ref _pressure);
-        return response ?? throw new TimeoutException($"Receiving message of type {typeof(T).Name} timed out");
-
+      // Wait until the device finishes sending data
+      // We check how much time has passed since the last AddDataReceived call
+      while(_lastReceived.Elapsed < _receiveMargin)
+        await Task.Delay(_receiveMargin);
     }
 
+    finally
+    {
+      lock (_singleResponseQueue)
+      {
+        _singleResponseQueue.Remove(command);
+      }
+      /// shared devices should not listen all the time, so we need to stop listening after sending the command
+      StopListening();
+      ReleaseStreamLock();
+    }
+    Interlocked.Decrement(ref _pressure);
+    return response ?? throw new TimeoutException($"Receiving message of type {typeof(T).Name} timed out");
+  }
 
   public static string ToPrintableUtf8(byte[] bytes)
   {
@@ -207,8 +197,9 @@ public abstract class AresSerialConnection : IAresSerialConnection
     });
 
     await AcquireStreamLock(ct);
-        // assure that the listener is running before sending the command
-        Listen();
+    
+    // assure that the listener is running before sending the command
+    Listen();
     try
     {
       SendOutboundMessage(command);
@@ -217,13 +208,12 @@ public abstract class AresSerialConnection : IAresSerialConnection
     }
     finally
     {
-            // with streaming responses we should not stop listening after sending the command, as the device may continue to send data for a while
-            ReleaseStreamLock();
+      // with streaming responses we should not stop listening after sending the command, as the device may continue to send data for a while
+      ReleaseStreamLock();
     }
 
     return observable;
   }
-
 
   public IObservable<SerialTransaction<T>> GetTransactionStream<T>() where T : SerialResponse
   {
@@ -252,27 +242,38 @@ public abstract class AresSerialConnection : IAresSerialConnection
 
   public void Close()
   {
-        // shared devices should not have a persistent listener, but not harm in calling StopListening here to ensure that the listener is stopped before closing the connection
-        StopListening();
-    CloseCore();
-    if(!IsOpen)
-      return;
+    // Make sure this connection isn't mid-send.
+    AcquireStreamLock().GetAwaiter().GetResult();
+    
+    try
+    {
+      StopListening();
+      CloseCore();
 
-    throw new InvalidOperationException("Successfully executed Close, but did not report IsOpen as false");
+      if(!IsOpen)
+        return;
+
+      throw new InvalidOperationException("Successfully executed Close, but port still reported that it was open.");
+    }
+
+    finally
+    {
+      ReleaseStreamLock();
+    }
   }
-
-  public string Name { get; }
-  public bool IsOpen { get; protected set; }
 
   private Task StartBufferProcessor()
   {
     return Task.Run(() =>
-      {
-        while(!_listenerCancellationTokenSource.Token.IsCancellationRequested)
-          ProcessBufferCore();
-      },
+    {
+      while(!_listenerCancellationTokenSource.Token.IsCancellationRequested)
+        ProcessBufferCore();
+    },
       _listenerCancellationTokenSource.Token);
   }
+
+  public string Name { get; }
+  public bool IsOpen { get; protected set; }
 
   protected abstract void CloseCore();
 
